@@ -3,6 +3,7 @@ import { neon } from "@neondatabase/serverless"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 
+// Connect to Neon DB using DATABASE_URL from .env
 const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: NextRequest) {
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
     }
 
-    // Find user
+    // Query user by email
     const users = await sql`
       SELECT id, name, email, password_hash FROM users WHERE email = ${email}
     `
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     const user = users[0]
 
-    // Verify password
+    // Verify password using bcrypt
     const isValidPassword = await bcrypt.compare(password, user.password_hash)
 
     if (!isValidPassword) {
@@ -34,11 +35,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Create JWT token
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET || "your-secret-key", {
-      expiresIn: "7d",
-    })
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "7d" }
+    )
 
-    // Create response
+    // Build response with JWT set in HTTP-only cookie
     const response = NextResponse.json({
       success: true,
       message: "Login successful",
@@ -49,12 +52,12 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Set HTTP-only cookie
     response.cookies.set("auth-token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
+      path: "/", // ensure cookie is available throughout the app
     })
 
     return response
